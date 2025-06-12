@@ -1,6 +1,8 @@
 //#include "nctest.h"
 #include "uebpgdecls.h"
+///******Warning the following code seems to have memo leak------ 5.7.15 
 //create 3D array and allocate contiguous memory block this enbales a full block read of netcdf
+//__host__ __device__ 
 float*** create3DArrayblock_Contiguous(int nt, int nr, int nc)      //inputs: no. of rows and no. of colos , height/time (dimensions) of matrix
 {
 	float*** myMatrix = new float**[nt];
@@ -21,6 +23,7 @@ float*** create3DArrayblock_Contiguous(int nt, int nr, int nc)      //inputs: no
 }//float*** create3DArrayblock
 
 //delets a 3D array (frees memory) allocated contiguously
+//__host__ __device__ 
 void delete3DArrayblock_Contiguous(float*** myMatrix) // int nr, int nc)// input: 3D array
 {
 	/*for (int t = 0; t< nt; t++)
@@ -34,8 +37,9 @@ void delete3DArrayblock_Contiguous(float*** myMatrix) // int nr, int nc)// input
 	return;
 
 }//double** CreateMatrix
-
+//******Warning the following code seems to have memo leak------ 5.7.15 
 //create 2D array and allocate contiguous memory block this enbales a full block read of netcdf
+//__host__ __device__ 
 float** create2DArray_Contiguous(int nr, int nc)      //inputs: no. of rows and no. of colos , height/time (dimensions) of matrix
 {
 	float** myMatrix = new float*[nr];
@@ -49,6 +53,7 @@ float** create2DArray_Contiguous(int nr, int nc)      //inputs: no. of rows and 
 }//float*** create3DArrayblock
 
 //delets a 2D array (frees memory allocated) contiguously
+//__host__ __device__ 
 void delete2DArray_Contiguous(float** myMatrix) // int nr, int nc)// input: 2D array
 {
 	delete[] myMatrix[0];
@@ -59,6 +64,7 @@ void delete2DArray_Contiguous(float** myMatrix) // int nr, int nc)// input: 2D a
 
 //Creates a matrix. The inputs are matrix dimensions. It allocates a memory block of size nrows*ncols* (size of float)
 //and returns an array of pointers to the allocated memory block
+//__host__ __device__ 
 float*** Create3DArray(int nt, int nr, int nc)       //inputs: no. of rows and no. of colos (dimensions) of matrix
 {
 	float*** myMatrix = new float**[nt];
@@ -73,6 +79,7 @@ float*** Create3DArray(int nt, int nr, int nc)       //inputs: no. of rows and n
 }//float** CreateMatrix
 
 //The following program deletes a matrix passed to it (it frees up the memory block allocated to the matrix)
+//__host__ __device__ 
 void Delete3DArray(float ***A, int nt, int nr, int nc)            //input: A matrix
 {
 	for (int i = 0; i< nt; i++)

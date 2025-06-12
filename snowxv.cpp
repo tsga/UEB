@@ -39,7 +39,7 @@
 //common declarations
 #include "uebpgdecls.h"
 //********UPDATEtime ()  Update time for each time step
-void UPDATEtime(int &YEAR, int &MONTH, int &DAY, double &HOUR, double DT)
+ /*__host__ __device__*/   void    uebCell::UPDATEtime(int &YEAR, int &MONTH, int &DAY, double &HOUR, double DT)
 {
 	int DM;				 // 30/03/2004 ITB 
 						  // 30/03/2004 ITB  
@@ -77,7 +77,7 @@ void UPDATEtime(int &YEAR, int &MONTH, int &DAY, double &HOUR, double DT)
 
 // ************************** lyear () ***************************
 //    function to return number of days in February checking for leap years
-int lyear(int year)
+ /*__host__ __device__*/  int uebCell::lyear(int year)
 {
 	int lyear; // Leap years are every 4 years 
 			   // - except for years that are multiples of centuries (e.g. 1800, 1900)
@@ -90,17 +90,17 @@ int lyear(int year)
 }
 //**************************** atf () ****************************
 //    to get the atmospheric transmissivity using the Bristow and Campbell  (1984) approach
-void atf(float &atff,float trange,int month, float *dtbar, float a, float c)
+ /*__host__ __device__*/   void    uebCell::atf(float &atff,float trange,int month, float *dtbar, float a, float c)
 {
 	//DIMENSION dtbar(12)
-	float b = 0.036* exp(-0.154*dtbar[month-1]);
-	atff = a*(1-exp(-b * pow(trange,c)));
+	float b = 0.036* expf(-0.154*dtbar[month-1]);
+	atff = a*(1-expf(-b * powf(trange,c)));
 	//     write(6,*)trange,month,a,c,dtbar(month),atf
 	return;
 }
 
 //************************** hourlyRI () To get hourly radiation index
-void hyri(int YEAR, int MONTH, int DAY, float HOUR, float DT, float SLOPE, float AZI, float LAT, float &HRI, float &COSZEN)
+ /*__host__ __device__*/   void    uebCell::hyri(int YEAR, int MONTH, int DAY, float HOUR, float DT, float SLOPE, float AZI, float LAT, float &HRI, float &COSZEN)
 {
 	float  LP,LAT1;   
 	// lp= latitude of equivalent plane in radians
@@ -199,12 +199,11 @@ void hyri(int YEAR, int MONTH, int DAY, float HOUR, float DT, float SLOPE, float
 	return;
 }
 //***************************** JULIAN () ****************************
-
 //             To convert the real date to julian date
 // YJS The Julian are change to a new version to take the Leap Yean into consideration
 //    in the old version, there are 365 days each year.
 //     FUNCTION JULIAN(MONTH,DAY)
-int julian(int yy, int mm, int dd)
+/*__host__ __device__*/  int uebCell::julian(int yy, int mm, int dd)
 {
 	int julian;
 	int mmstrt[12] = {0,31,59,90,120,151,181,212,243,273,304,334};
@@ -215,11 +214,10 @@ int julian(int yy, int mm, int dd)
 	julian = jday;
 	return julian; 
 }
-
 //******************** For cloudiness fraction cf *********************
 //    Computes the incoming longwave radiation using satterlund Formula
 //    Modified 10/13/94 to account for cloudiness.  Emissivity of cloud cover fraction is assumed to be 1.
-void cloud(float as, float bs, float atff, float &cf)
+ /*__host__ __device__*/   void    uebCell::cloud(float as, float bs, float atff, float &cf)
 {
 	//as     = param(28)                        // Fraction of extraterrestaial radiation on cloudy day,Shuttleworth (1993)  
 	//bs     = param(29)                      // (as+bs):Fraction of extraterrestaial radiation on clear day, Shuttleworth (1993) 
@@ -235,15 +233,15 @@ void cloud(float as, float bs, float atff, float &cf)
 //************************************ QLIF ()*********************************
 //???? long wave radiation from temperatrue and other weather variables??
 //TBC_6.5.13
-void qlif(float TA, float RH, float TK, float SBC, float &Ema, float &Eacl, float cf, float &qliff )
+ /*__host__ __device__*/   void    uebCell::qlif(float TA, float RH, float TK, float SBC, float &Ema, float &Eacl, float cf, float &qliff )
 {
 	float TAK  = TA + TK;
 	float EA   = RH * svpw(TA);
 	//******************************************************  old option
 	//    
-	Eacl   =  1.08 * (1.0 - exp(-1*pow(EA/100.0, TAK/2016.0)));   // Clear sky emissivity
+	Eacl   =  1.08 * (1.0 - expf(-1*powf(EA/100.0, TAK/2016.0)));   // Clear sky emissivity
 	Ema   =  (cf + (1.0 - cf)*Eacl);                              // Emissivity for cloudy sky
-	qliff =  Ema * SBC * pow(TAK, 4);                                 // Incoming longwave 
+	qliff =  Ema * SBC * powf(TAK, 4.0);                                 // Incoming longwave 
 	return;
 }
 //The following were copied from functions.f90
@@ -253,13 +251,13 @@ void qlif(float TA, float RH, float TK, float SBC, float &Ema, float &Eacl, floa
 //CAN BE IN ANY UT-LIKE time SCALE (UTC, UT1, TT, ETC.) - OUTPUT. //JULIAN DATE WILL HAVE SAME BASIS.  
 //ALGORITHM BY FLIEGEL AND //VAN FLANDERN. //SOURCE: http://aa.usno.navy.mil/software/novas/novas_f/novasf_intro.php
 //I = YEAR (IN) //M = MONTH NUMBER (IN) //K = DAY OF MONTH (IN) //H = UT HOURS (IN) //TJD = JULIAN DATE (OUT)
-double julian ( int I,int M, int K,double H)
+ /*__host__ __device__*/  double uebCell::julian(int I, int M, int K, double H)
 {
 	double TJD,JD;
 	//JD=JULIAN DAY NO FOR DAY BEGINNING AT GREENWICH NOON ON GIVEN DATE
 	JD = K-32075 + 1461*(I+4800 + (M-14)/12) / 4 + 367*(M-2-(M-14)/12*12)/12-3*((I+4900+(M-14)/12)/100)/4;
 	TJD = JD - 0.5 + H/24.0;
-	//##%^_TBC 6.8.13 //pow(10,0) in place of D0
+	//##%^_TBC 6.8.13 //powf(10,0) in place of D0
 	return TJD;
 }
 
@@ -267,7 +265,7 @@ double julian ( int I,int M, int K,double H)
 //(UTC, UT1, TT, ETC.) - OUTPUT time VALUE WILL HAVE SAME BASIS. OUTPUT CALENDAR DATE WILL BE GREGORIAN.  
 //ALGORITHM BY FLIEGEL AND VAN FLANDERN. //SOURCE: http://aa.usno.navy.mil/software/novas/novas_f/novasf_intro.php
 //TJD = JULIAN DATE (IN) //I = YEAR (OUT) //M = MONTH NUMBER (OUT) //K = DAY OF MONTH (OUT) //H = UT HOURS (OUT)
-void calendardate (double TJD,int &I,int &M,int &K, double &H)
+ /*__host__ __device__*/   void    uebCell::calendardate (double TJD,int &I,int &M,int &K, double &H)
 {
 	double DJD, JD;
 	int L, N;

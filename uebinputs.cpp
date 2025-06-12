@@ -4,10 +4,10 @@
 
 //overload functions to read params
 //this one would read params as array of floats
-void readParams(const char* inpFile, float* &parArray, const int nParams)
+void    readParams(const char* inpFile, float* &parArray, const int nParams)
 {
 	parArray = new float[nParams];
-	ifstream pinFile(inpFile);		
+	std::ifstream pinFile(inpFile);		
 	char headerLine[256];
 	pinFile.getline(headerLine,256,'\n'); //skip header
 	for (int i=0;i<nParams; i++)
@@ -23,7 +23,7 @@ void readParams(const char* inpFile, float* &parArray, const int nParams)
 
 //function to read parameters into array of param struct with param name value pair
 //Brute force! have to get better ways
-void readParams(const char* inpFile, params strParamValues)
+void    readParams(const char* inpFile, params strParamValues)
 {
 	FILE* pinFile = fopen(inpFile,"rt");	
 	char headerLine[256];
@@ -90,7 +90,7 @@ void readParams(const char* inpFile, params strParamValues)
 }
 void readSiteVars(const char* inpFile, sitevar *&svArr)
 {
-	ifstream pinFile(inpFile);	
+	std::ifstream pinFile(inpFile);	
 	char headerLine[256];
 	//istringstream valueLine;	
 	pinFile.getline(headerLine,256);   //skip header	
@@ -122,8 +122,8 @@ void readSiteVars(const char* inpFile, sitevar *&svArr)
 		        sscanf(headerLine,"%s %s ",&svArr[i].svFile, &svArr[i].svVarName);
 				break;			
 			default:
-				cout<<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)"<<endl;
-				cout<<"Using default value..."<<endl;
+				std::cout<<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)"<<std::endl;
+				std::cout<<"Using default value..."<<std::endl;
 				svArr[i].svdefValue = vardefaults[i]; 
 			}
 			//i++;
@@ -138,7 +138,7 @@ void readSiteVars(const char* inpFile, sitevar *&svArr)
 
 //function to read site variables (and initial contitions??)
 //#_15 ics should come separate?
-void readSiteVars(const char* inpFile, float svSValue[], char* svFile[], char* svVarName[], int svType[] )
+void  readSiteVars(const char* inpFile, float svSValue[], char* svFile[], char* svVarName[], int svType[] )
 {
 	FILE* pinFile = fopen(inpFile,"rt");	
 	char headerLine[256];
@@ -167,8 +167,8 @@ void readSiteVars(const char* inpFile, float svSValue[], char* svFile[], char* s
 				sscanf(headerLine,"%s %s",&svFile[i],&svVarName[i]);
 				break;			
 			default:
-				cout<<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)"<<endl;
-				cout<<"Using default value..."<<endl;
+				std::cout<<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)"<<std::endl;
+				std::cout<<"Using default value..."<<std::endl;
 				break;       //exit 
 			}
 			i++; //increment i
@@ -179,7 +179,7 @@ void readSiteVars(const char* inpFile, float svSValue[], char* svFile[], char* s
 	return;
 	
 }
-void readSiteVars(const char* inpFile, sitevar svArr[], int indx)
+void  readSiteVars(const char* inpFile, sitevar svArr[], int indx)
 {
 	FILE* pinFile = fopen(inpFile,"r");	
 	char headerLine[256];
@@ -214,8 +214,8 @@ void readSiteVars(const char* inpFile, sitevar svArr[], int indx)
 				sscanf(headerLine,"%s %s",&svArr[i].svFile,&svArr[i].svVarName);
 				break;			
 			default:
-				cout<<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)\n"<<endl;
-				cout<<"Using default value..."<<endl;
+				std::cout<<"Wrong site variable type; has to be -1 (Use default values), 0 (single value) or 1 (2D netcdf)\n"<<std::endl;
+				std::cout<<"Using default value..."<<std::endl;
 				svArr[i].svdefValue = vardefaults[i]; 
 				//exit;
 			}
@@ -231,7 +231,7 @@ void readSiteVars(const char* inpFile, sitevar svArr[], int indx)
 //function  to read forcing/weather variables
 void readInputForcVars(const char* inputconFile, inpforcvar *frArr)
 {
-	ifstream pinFile(inputconFile);	
+	std::ifstream pinFile(inputconFile);	
 	char headerLine[256];
 	//istringstream valueLine;	
 	pinFile.getline(headerLine,256);   //skip header	
@@ -246,7 +246,7 @@ void readInputForcVars(const char* inputconFile, inpforcvar *frArr)
 			//fscanf(pinFile,"%d\n",&svArr[i].svType);
 			switch (frArr[i].infType)
 			{
-			case -1: 				
+			case -1:
 				pinFile.getline(headerLine, 256, '\n');
 				sscanf(headerLine, "%f ", &frArr[i].infdefValue);
 				break;
@@ -263,8 +263,8 @@ void readInputForcVars(const char* inputconFile, inpforcvar *frArr)
 		        sscanf(headerLine,"%f ",&frArr[i].infdefValue);
 				break;
 			default:
-				cout<<"Wrong input/forcing type; has to be -1 (compute by the model), 2 (single value) , 0 (time-series text file) or 1 (3D netcdf)"<<endl;
-				cout<<"Using default value..."<<endl;
+				std::cout<<"Wrong input/forcing type; has to be -1 (compute by the model), 2 (single value) , 0 (time-series text file) or 1 (3D netcdf)"<<std::endl;
+				std::cout<<"Using default value..."<<std::endl;
 				break; //exit(1); 
 			}
 			//i++;
@@ -277,9 +277,9 @@ void readInputForcVars(const char* inputconFile, inpforcvar *frArr)
 }
 
 //output control file: details of point, distributed netcdf, aggregated netcdf outputs 
-void readOutputControl(const char* outputconFile, pointOutput* &pOut, ncOutput* &ncOut, aggOutput* &aggOut, int &npout, int &nncout, int &naggOut)
+void readOutputControl(const char* outputconFile, pointOutput* &pOut, int &npout, ncOutput* &ncOut, int &nncout, aggOutput* &aggOut, int &naggOut, ncOutput* &daOut, int &ndaout)
 {
-	ifstream poutFile(outputconFile);
+	std::ifstream poutFile(outputconFile);
 	char headerLine[256];
 	int nout;
 	//istringstream valueLine;	
@@ -306,7 +306,7 @@ void readOutputControl(const char* outputconFile, pointOutput* &pOut, ncOutput* 
 	}	
 	//poutFile.close();
 	//aggregated outputs
-	//ifstream paoutFile(aggoutputconFile);
+	//std::ifstream paoutFile(aggoutputconFile);
 	//paoutFile.getline(headerLine, 256);   //skip header	
 	poutFile.getline(headerLine, 256);
 	sscanf(headerLine, "%d ", &nout);
@@ -316,7 +316,17 @@ void readOutputControl(const char* outputconFile, pointOutput* &pOut, ncOutput* 
 	{
 		poutFile.getline(headerLine, 256);
 		sscanf(headerLine, "%s %s %s ", &aggOut[i].symbol, &aggOut[i].units, &aggOut[i].aggop);
-	}	
+	}
+	//data assimilation output
+	poutFile.getline(headerLine, 256);
+	sscanf(headerLine, "%d ", &nout);
+	ndaout = nout;
+	daOut = new ncOutput[nout];
+	for (int i = 0; i < nout; i++)
+	{
+		poutFile.getline(headerLine, 256);
+		sscanf(headerLine, "%s %s %s", &daOut[i].symbol, &daOut[i].outfName, &daOut[i].units);
+	}
 	poutFile.close();
 	//paoutFile.close();
 	return;
@@ -350,17 +360,17 @@ void readTextData(const char* inforcFile, float *&tcor_var, float *&tvar_in, int
 
 	fclose(inputFile);
 
-}//void readTextData
+}// __host__ __device__  void    readTextData
 
 // overload function with only the variable reading (input forcing time series text file)
-void readTextData(const char* inforcFile, float *&tvar_in, int &nrecords)
+void    readTextData(const char* inforcFile, float *&tvar_in, int &nrecords)
 {
-	ifstream inputFile(inforcFile,ios::in);
+	std::ifstream inputFile(inforcFile,std::ios::in);
 	nrecords = 0;
 	char commentLine[256];                    //string to read header line
 	if(!inputFile)
 	{
-		cout<<"Error opening file: "<<inforcFile<<endl;
+		std::cout<<"Error opening file: "<<inforcFile<<std::endl;
 		return;
 	}
 	inputFile.getline(commentLine,256,'\n');  //skip first header line 
@@ -374,10 +384,10 @@ void readTextData(const char* inforcFile, float *&tvar_in, int &nrecords)
 			++nrecords;                                        
 	}//while
 
-	//cout<<"number of records in file: "<<inforcFile<<" "<<nrecords<<endl;
+	//std::cout<<"number of records in file: "<<inforcFile<<" "<<nrecords<<std::endl;
 	tvar_in = new float[nrecords];
 
-	inputFile.seekg(0L,ios::beg);  
+	inputFile.seekg(0L,std::ios::beg);  
 
 	inputFile.getline(commentLine,256,'\n');  //skip first header line 
 	for (int i=0; i<nrecords-1; i++) 
@@ -385,7 +395,6 @@ void readTextData(const char* inforcFile, float *&tvar_in, int &nrecords)
 		inputFile.getline(commentLine,256,'\n');
 		sscanf(commentLine,"%*d %*d %*d %*d %f \n",&tvar_in[i]); //&tcor_var[i],&tvar_in[i]);	
 	}
-
 	inputFile.close();
     //for(int i=0; i< 100; i++)
 	//	printf(" %f ", tvar_in[i]);
@@ -420,4 +429,5 @@ void  readTStextFile(const char* inforcFile, float *&tvar_in, int &nrecords)
 
 	fclose(inputFile);
 
-}//   readTextData
+}// __host__ __device__  void    readTextData
+ 

@@ -1,5 +1,313 @@
-//#include"nctest.h"
 #include "uebpgdecls.h"
+//read multiple slubs (y,x arrays) along the time dim (for interval between tstart --- tend) 
+// __host__ __device__ 
+int readNC_yxSlub(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME, int &tStart, int tEnd,
+	float*** &pvar_in, int &nrecords, int &numNc, MPI::Intracomm inpComm, MPI::Info inpInfo)
+{
+	//float* pvarin_temp = NULL;
+	//ids for variable, axes,...
+	int retncval = 0, ncid = 0, pvarid = 0; // pxid = 0, pyid = 0, ndims = 0; 	
+	//variable data type
+	nc_type varType;
+	size_t pdim_sizes;
+	//array of dimensions
+	int pdimids[3]; //NC_MAX_DIMS]; 3D file only being read here; expected to get error message otherwise
+	//dimension names 
+	char pdim_Names[80];
+	size_t start[3], count[3];
+	//Open the netcdf file.  
+	if ((retncval = nc_open(FILE_NAME, NC_NOWRITE, &ncid)))
+		ERR(retncval);
+	// get variable id
+	if ((retncval = nc_inq_varid(ncid, VAR_NAME, &pvarid)))
+		ERR(retncval);
+	//var information, checking the dimension array
+	if ((retncval = nc_inq_var(ncid, pvarid, NULL, &varType, NULL, pdimids, NULL)))
+		ERR(retncval);
+
+	//check dimension info and set start and count arrays; 
+	//int yxDim = 1;
+	for (int i = 0; i < 3; i++)	{
+		if (retncval = nc_inq_dim(ncid, pdimids[i], pdim_Names, &pdim_sizes))
+			ERR(retncval);
+		if (strcmp(pdim_Names, tcor_NAME) == 0){
+			start[i] = tStart;
+			if (tEnd < pdim_sizes){
+				count[i] = tEnd - tStart;
+				tStart += count[i];                //new start point
+			}
+			else{
+				count[i] = pdim_sizes - tStart;        //take the lower of the tEnd/count[i] to guarantee against going out of bounds
+				numNc++;                               //next time go to the next netcdf file
+				tStart = 0;
+			}
+			nrecords = count[i];
+		}
+		else{
+			start[i] = 0;
+			count[i] = pdim_sizes;
+			//yxDim *= count[i];
+		}
+	}
+	if (pvar_in != NULL)
+		delete3DArrayblock_Contiguous(pvar_in);
+	pvar_in = create3DArrayblock_Contiguous(count[0], count[1], count[2]);
+	//read var data
+	if (retncval = nc_get_vara_float(ncid, pvarid, start, count, &pvar_in[0][0][0]))
+		ERR(retncval);
+
+	//close netcdf file			
+	if (retncval = nc_close(ncid))
+		ERR(retncval);
+	return 0;
+}
+//read multiple slubs (y,x arrays) along the time dim for data with t, y, x config---time as slowely varying array; and pvar_in already allocated
+// __host__ __device__ 
+int readNC_yxSlub_givenT(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME, int &tStart, float** &pvar_in, float &tcorvar, int &numNc, MPI::Intracomm inpComm, MPI::Info inpInfo)
+{
+	//float* pvarin_temp = NULL;
+	//ids for variable, axes,...
+	int retncval = 0, ncid = 0, pvarid = 0, ptid; // pxid = 0, pyid = 0, ndims = 0; 	
+	//variable data type
+	nc_type varType;
+	size_t pdim_sizes;
+	//array of dimensions
+	int pdimids[3]; //NC_MAX_DIMS]; 3D file only being read here; expected to get error message otherwise
+	//dimension names 
+	char pdim_Names[80];
+	size_t start[3], count[3];
+	//Open the netcdf file.  
+	if ((retncval = nc_open(FILE_NAME, NC_NOWRITE, &ncid)))
+		ERR(retncval);
+	// get variable id
+	if ((retncval = nc_inq_varid(ncid, VAR_NAME, &pvarid)))
+		ERR(retncval);
+	// Get the varids of the coordinate variables 
+	if ((retncval = nc_inq_varid(ncid, tcor_NAME, &ptid)))
+		ERR(retncval);
+
+	//var information, checking the dimension array
+	if ((retncval = nc_inq_var(ncid, pvarid, NULL, &varType, NULL, pdimids, NULL)))
+		ERR(retncval);
+	//check dimension info and set start and count arrays; 
+	//int yxDim = 1;
+	int tEnd = 0;
+	int tIndx = 0;
+	for (int i = 0; i < 3; i++)	{
+		if (retncval = nc_inq_dim(ncid, pdimids[i], pdim_Names, &pdim_sizes))
+			ERR(retncval);
+		if (strcmp(pdim_Names, tcor_NAME) == 0){
+			tIndx = i;
+			start[i] = tStart;
+			count[i] = 1;
+			tEnd = tStart + 1;
+			if (tEnd < pdim_sizes){				
+				tStart++;            // count[i];                //new start point
+			}
+			else{
+				numNc++;                               //next time go to the next netcdf file
+				tStart = 0;
+			}
+		}
+		else {
+			start[i] = 0;
+			count[i] = pdim_sizes;
+		}
+		//start[i] = 0; 		count[i] = pdim_sizes;
+		//yxDim *= count[i];		}
+	}
+	/*if (pvar_in != NULL)
+	delete3DArrayblock_Contiguous(pvar_in);
+	pvar_in = create3DArrayblock_Contiguous(count[0], count[1], count[2]);*/
+	if (retncval = nc_get_vara_float(ncid, pvarid, start, count, &pvar_in[0][0]))
+		ERR(retncval);
+	//current time value
+	if (retncval = nc_get_var1_float(ncid, ptid, &start[tIndx], &tcorvar))
+		ERR(retncval);
+	//close netcdf file			
+	if (retncval = nc_close(ncid))
+		ERR(retncval);
+	return 0;
+}
+//read whole nc array for a given variable to contiguous 1d array; the y,x,time order is irrelevant inside the function, but it is assumed known by caller,
+// __host__ __device__ 
+int readNC_Contiguous(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME, int &Ntdim, float* &pvar_in, MPI::Intracomm inpComm, MPI::Info inpInfo)
+{
+	//ids for variable, axes,...
+	int retncval = 0, ncid = 0, pvarid = 0;
+	//size_t pdim_sizes;
+	//variable data type
+	nc_type varType;
+	//array of dimensions
+	int pdimids[3]; //NC_MAX_DIMS]; 3D file only being read here; expected to get error message otherwise
+	//dimension names 
+	char pdim_Names[80];
+	size_t start[3], count[3];
+	//dimensions lengths
+	//size_t Ntdim = 0, Nxdim = 0, Nydim = 0;
+	//Open the file.  
+	if (retncval = nc_open(FILE_NAME, NC_NOWRITE, &ncid))
+		ERR(retncval);
+	// get variable id
+	if ((retncval = nc_inq_varid(ncid, VAR_NAME, &pvarid)))
+		ERR(retncval);	
+	//var information, checking the dimension array
+	if ((retncval = nc_inq_var(ncid, pvarid, NULL, &varType, NULL, pdimids, NULL)))
+		ERR(retncval);
+	//check dimension info and set start and count arrays; 
+	for (int i = 0; i < 3; i++)
+	{
+		if (retncval = nc_inq_dim(ncid, pdimids[i], pdim_Names, &count[i]))
+			ERR(retncval);	
+		//start[i] = 0;
+		if (strcmp(pdim_Names, tcor_NAME) == 0)
+			Ntdim = (int) count[i];						 	
+	}
+	//free memory
+	if (pvar_in !=NULL)
+		delete[] pvar_in;
+	//create the output arrays
+	pvar_in = new float[count[0] * count[1] * count[2]];           // create3DArrayblock_Contiguous(count[0], count[1], count[2]);          // (Ntdim, Nydim, Nxdim);	
+	//read variable (input data)
+	if (retncval = nc_get_var_float(ncid, pvarid, &pvar_in[0]))
+		ERR(retncval);
+	//close netcdf file			
+	if ((retncval = nc_close(ncid)))
+		ERR(retncval);
+	//std::cout << "SUCCESS reading input file: " << FILE_NAME << std::endl;
+	return 0;
+}
+
+//read whole nc array for a given variable to contiguous 3d array; the y,x,time order is irrelevant inside the function, but it is assumed known by caller,
+// __host__ __device__ 
+int read3DNC_Contiguous(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME, int &Ntdim, float*** &pvar_in, MPI::Intracomm inpComm, MPI::Info inpInfo)
+{
+	//ids for variable, axes,...
+	int retncval = 0, ncid = 0, pvarid = 0;
+	//size_t pdim_sizes;
+	//variable data type
+	nc_type varType;
+	//array of dimensions
+	int pdimids[3]; //NC_MAX_DIMS]; 3D file only being read here; expected to get error message otherwise
+	//dimension names 
+	char pdim_Names[80];
+	size_t start[3], count[3];
+	//dimensions lengths
+	//size_t Ntdim = 0, Nxdim = 0, Nydim = 0;
+	//Open the file.  
+	if (retncval = nc_open(FILE_NAME, NC_NOWRITE, &ncid))
+		ERR(retncval);
+	// get variable id
+	if (retncval = nc_inq_varid(ncid, VAR_NAME, &pvarid))
+		ERR(retncval);
+	//var information, checking the dimension array
+	if (retncval = nc_inq_var(ncid, pvarid, NULL, &varType, NULL, pdimids, NULL))
+		ERR(retncval);
+	//check dimension info and set start and count arrays; 
+	for (int i = 0; i < 3; i++)
+	{
+		if (retncval = nc_inq_dim(ncid, pdimids[i], pdim_Names, &count[i]))
+			ERR(retncval);
+		//start[i] = 0;
+		if (strcmp(pdim_Names, tcor_NAME) == 0)
+			Ntdim = (int)count[i];
+	}
+	//create the output arrays
+	//free existing memory 
+	if (pvar_in != NULL)
+		delete3DArrayblock_Contiguous(pvar_in);
+	pvar_in = create3DArrayblock_Contiguous(count[0], count[1], count[2]);          // (Ntdim, Nydim, Nxdim);	  new float(count[0] * count[1] * count[2]);  
+	//read variable (input data)
+	if (retncval = nc_get_var_float(ncid, pvarid, &pvar_in[0][0][0]))
+		ERR(retncval);
+	//close netcdf file			
+	if ((retncval = nc_close(ncid)))
+		ERR(retncval);
+	//std::cout << "SUCCESS reading input file: " << FILE_NAME << std::endl;
+	return 0;
+}
+//read nc to contiguous 1d array;  y,x,time coordinate names are same as index names
+// __host__ __device__ 
+int readNC_Contiguous(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME, const char* ycor_NAME, const char* xcor_NAME,
+	float* tcorvar, float* ycorvar, float* xcorvar, size_t &Ntdim, size_t &Nydim, size_t &Nxdim, float* &pvar_in, MPI::Intracomm inpComm, MPI::Info inpInfo)
+{
+	//ids for variable, axes,...
+	int retncval = 0, ncid = 0, pvarid = 0, pxid = 0, pyid = 0, ptid = 0, ndims = 0;
+	size_t pdim_sizes;
+	//variable data type
+	nc_type varType;
+	//array of dimensions
+	int pdimids[3]; //NC_MAX_DIMS]; 3D file only being read here; expected to get error message otherwise
+	//dimension names 
+	char pdim_Names[80];
+	size_t start[3], count[3];
+	//dimensions lengths
+	//size_t Ntdim = 0, Nxdim = 0, Nydim = 0;
+	//Open the file.  
+	if (retncval = nc_open(FILE_NAME, NC_NOWRITE, &ncid))
+		ERR(retncval);
+	// get variable id
+	if (retncval = nc_inq_varid(ncid, VAR_NAME, &pvarid))
+		ERR(retncval);
+	// Get the varids of the coordinate variables 
+	if (retncval = nc_inq_varid(ncid, tcor_NAME, &ptid))
+		ERR(retncval);
+	if (retncval = nc_inq_varid(ncid, ycor_NAME, &pyid))
+		ERR(retncval);
+	if (retncval = nc_inq_varid(ncid, xcor_NAME, &pxid))
+		ERR(retncval);
+	//var information, checking the dimension array
+	if ((retncval = nc_inq_var(ncid, pvarid, NULL, &varType, NULL, pdimids, NULL)))
+		ERR(retncval);
+	//check dimension info and set start and count arrays; 
+	for (int i = 0; i < 3; i++)
+	{
+		if ((retncval = nc_inq_dim(ncid, pdimids[i], pdim_Names, &pdim_sizes)))
+			ERR(retncval);
+		if (strcmp(pdim_Names, tcor_NAME) == 0)
+		{
+			start[i] = 0;
+			Ntdim = pdim_sizes;
+			count[i] = Ntdim;
+			tcorvar = new float[Ntdim];
+		}
+		else if (strcmp(pdim_Names, ycor_NAME) == 0)
+		{
+			start[i] = 0;
+			Nydim = pdim_sizes;
+			count[i] = Nydim;
+			ycorvar = new float[Nydim];
+		}
+		else
+		{
+			start[i] = 0;
+			Nxdim = pdim_sizes;
+			count[i] = Nxdim;
+			xcorvar = new float[Nxdim];
+		}
+	}
+	//create the output arrays
+	if (pvar_in != NULL)
+		delete[] pvar_in;
+	pvar_in = new float[count[0] * count[1] * count[2]];           // create3DArrayblock_Contiguous(count[0], count[1], count[2]);          // (Ntdim, Nydim, Nxdim);	
+	
+	// Read the coordinate (dimensions) variable data. 
+	if (retncval = nc_get_var_float(ncid, ptid, &tcorvar[0]))
+		ERR(retncval);
+	if (retncval = nc_get_var_float(ncid, pyid, &ycorvar[0]))
+		ERR(retncval);
+	if (retncval = nc_get_var_float(ncid, pxid, &xcorvar[0]))
+		ERR(retncval);
+	//read variable (input data)
+	if (retncval = nc_get_var_float(ncid, pvarid, &pvar_in[0]))
+		ERR(retncval);
+	//close netcdf file			
+	if (retncval = nc_close(ncid))
+		ERR(retncval);
+	//std::cout << "SUCCESS reading input file: " << FILE_NAME << std::endl;
+	return 0;
+}
+
 //writes the 1D array (TS values) at specified location in the netcdf
 int WriteTSto3DNC(const char* FileName, const char* VarName, int dimOrd, int y_dim, int x_dim,int Nt_dim,  float* var_inp, MPI::Intracomm inpComm, MPI::Info inpInfo)  //ydim, xdim =the coordinate point the data to be written; Nt_dim =the length of the TS
 {  
@@ -44,14 +352,14 @@ int WriteTSto3DNC(const char* FileName, const char* VarName, int dimOrd, int y_d
 		case 2:           //x,t,y
 			 
 			start[0] = x_dim;
-			start[0] = 0;  
+		start[1] = 0;
 			start[2] = y_dim; 	
 			count[0] = 1; 
 			count[1] = Nt_dim; 				
 			count[2] = 1;			 
 			 break;		
 		default:
-			cout<<"the dim order has to be between 0 and 2"<<endl;
+			std::cout<<"the dim order has to be between 0 and 2"<<std::endl;
 			getchar();
 			break;
 	 }	 
@@ -112,20 +420,94 @@ int WriteTSto3DNC_Block(const char* FileName, const char* VarName, int dimOrd, i
 		case 2:           //x,t,y
 
 			start[0] = XindArr[j];   // x_dim;
-			start[0] = 0;
+			start[1] = 0;
 			start[2] = YindArr[j];   // y_dim;
 			count[0] = 1;
 			count[1] = Nt_dim;
 			count[2] = 1;
 			break;
 		default:
-			cout << "the dim order has to be between 0 and 2" << endl;
+			std::cout << "the dim order has to be between 0 and 2" << std::endl;
 			getchar();
 			break;
 		}		
 		//put variable values
 		if (retncval = nc_put_vara_float(ncid, v_varid, start, count, &var_inp[j][0]))
 			ERR(retncval);
+	}
+	//close file
+	if ((retncval = nc_close(ncid)))
+		ERR(retncval);
+	//delte 3D array
+	//fflush(stdout); 
+	return 0;
+}
+//writes multiple 2D arrays (e.g., TS-Ens values) at specified locations in the netcdf
+int WriteTStoMultiDnc_Block(const char* FileName, const char* VarName, int dimOrd, int *YindArr, int *XindArr, int bSize, int Nt_dim, int Nz_dim, float*** var_inp, MPI::Intracomm inpComm, MPI::Info inpInfo)  //ydim, xdim =the coordinate point the data to be written; Nt_dim =the length of the TS
+{
+	// IDs for the netCDF file, dimensions, and variables. 
+	int ncid = 0, y_dimid = 0, x_dimid = 0, t_dimid = 0;
+	int v_varid = 0, t_varid = 0, y_varid = 0, x_varid = 0;
+	const char* vunits = "UNITS";
+	const int  NDIMS = 4;
+	int dimids[NDIMS];
+	// The start and count arrays will tell the netCDF library where to write our data.    
+	size_t start[NDIMS], count[NDIMS];
+	// Error handling.  
+	int retncval = 0;
+
+	// Open netcdf file.  
+	if ((retncval = nc_open(FileName, NC_WRITE, &ncid)))             //| NC_MPIIO, inpComm, inpInfo
+		ERR(retncval);
+	// get variable id
+	if ((retncval = nc_inq_varid(ncid, VarName, &v_varid)))
+		ERR(retncval);
+	/* The dimids array is used to pass the dimids of the dimensions of
+	the netCDF variables. In C, the unlimited dimension must come first on the list of dimids. */
+	for (int j = 0; j < bSize; j++){
+		for (int k = 0; k < Nt_dim; k++) {
+			switch (dimOrd)
+			{
+			case 0:        //t,y,x
+				start[0] = k;	//0;
+				start[1] = YindArr[j];   // y_dim;
+				start[2] = XindArr[j];   // x_dim;
+				start[3] = 0;   // z_dim;
+				count[0] = 1;   // Nt_dim;
+				count[1] = 1;
+				count[2] = 1;
+				count[3] = Nz_dim;
+				break;
+			case 1:   //y,x,t
+				start[0] = YindArr[j];   // y_dim;
+				start[1] = XindArr[j];	 // x_dim;
+				start[2] = k;
+				start[3] = 0;   // z_dim;
+				count[0] = 1;
+				count[1] = 1;
+				count[2] = 1;   // Nt_dim;
+				count[3] = Nz_dim;
+				break;
+			case 2:           //x,t,y
+
+				start[0] = XindArr[j];   // x_dim;
+				start[1] = k;	//0;
+				start[2] = YindArr[j];   // y_dim;
+				start[3] = 0;   // z_dim;
+				count[0] = 1;
+				count[1] = 1;	// Nt_dim;
+				count[2] = 1;
+				count[3] = Nz_dim;
+				break;
+			default:
+				std::cout << "the dim order has to be between 0 and 2" << std::endl;
+				getchar();
+				break;
+			}
+			//put variable values
+			if (retncval = nc_put_vara_float(ncid, v_varid, start, count, &var_inp[j][k][0]))
+				ERR(retncval);
+		}
 	}
 	//close file
 	if ((retncval = nc_close(ncid)))
@@ -172,7 +554,7 @@ int Write_uebaggTS_toNC(const char* FileName, const char* VarName, int dimOrd, i
 		count[1] = Nt_dim;
 		break;	
 	default:
-		cout << "the dim order has to be 0 or 1" << endl;
+		std::cout << "the dim order has to be 0 or 1" << std::endl;
 		getchar();
 		break;
 	}
@@ -221,7 +603,7 @@ int Write_uebaggTS_toNC_par(const char* FileName, const char* VarName, int dimOr
 		count[1] = Nt_dim;
 		break;
 	default:
-		cout << "the dim order has to be 0 or 1" << endl;
+		std::cout << "the dim order has to be 0 or 1" << std::endl;
 		getchar();
 		break;
 	}
@@ -303,7 +685,7 @@ int create3DNC_uebAggregatedOutputs(const char* FileName, aggOutput *aggOut, int
 		dimids[1] = ptid_out;		
 		break;	
 	default:
-		cout << "the dim order has to be either 0 or 1" << endl;
+		std::cout << "the dim order has to be either 0 or 1" << std::endl;
 		getchar();
 		break;
 	}	
@@ -373,7 +755,7 @@ int create3DNC_uebAggregatedOutputs(const char* FileName, aggOutput *aggOut, int
 		ERR(retncval);
 	if (retncval = nc_close(ncid_out))
 		ERR(retncval);
-	cout << "Sucess creating and storing dimension vars in: " << FileName << endl;
+	std::cout << "Sucess creating and storing dimension vars in: " << FileName << std::endl;
 	//fflush(stdout); 
 	return 0;
 }
@@ -487,7 +869,7 @@ int create3DNC_uebOutputs(const char* FileName, const char* VarName, const char 
 		dimids[2] = pyid_out;
 		break;
 	default:
-		cout << "the dim order has to be between 0 and 2" << endl;
+		std::cout << "the dim order has to be between 0 and 2" << std::endl;
 		getchar();
 		break;
 	}
@@ -503,7 +885,7 @@ int create3DNC_uebOutputs(const char* FileName, const char* VarName, const char 
 	//grid mapping
 	if (retncval = nc_get_att_text(ncid, pvarid, "grid_mapping",grid_mappingValue))
 		ERR(retncval);
-	//cout << grid_mappingValue << endl;
+	//std::cout << grid_mappingValue << std::endl;
 	if (retncval = nc_copy_att(ncid, pvarid, "grid_mapping", ncid_out, v_varid))
 		ERR(retncval);
 	/*if (retncval = nc_put_att_text(ncid_out, v_varid, "grid_mapping", , (const char*)grid_mappingValue))
@@ -569,7 +951,209 @@ int create3DNC_uebOutputs(const char* FileName, const char* VarName, const char 
 	if (retncval = nc_close(ncid_out))
 		ERR(retncval);
 
-	cout << "Sucess creating and storing dimension vars in: " << FileName << endl;
+	std::cout << "Sucess creating and storing dimension vars in: " << FileName << std::endl;
+	//fflush(stdout); 
+	return 0;
+}
+
+//creates a multiD netcdf to store data assimilation outputs for UEB
+int createMultiDnc_uebOutputs(const char* FileName, const char* VarName, const char *varUnits, const char* tName, const char* tUnits,
+	const char* tlong_name, const char* tcalendar, int Nt_dim, int dimOrd, float* t_inp, float *fillVal, const char* ws_FileName, const char* ws_VarName, 
+	const char* yName, const char* xName, const char* zName, int Nz_dim, MPI::Intracomm inpComm, MPI::Info inpInfo)
+{
+	//const char* yUnits, const char* xUnits;
+	float* y_inp;
+	float* x_inp;
+	//ids for variable, axes,...
+	int retncval = 0, ncid = 0, pvarid = 0, pxid = 0, pyid = 0, ndims = 0;
+	//dimensions lengths
+	size_t Nxdim = 0, Nydim = 0;
+	//array of dimensions
+	int pdimids[2];
+	if ((retncval = nc_open(ws_FileName, NC_NOWRITE, &ncid)))
+		ERR(retncval);
+	// get variable id
+	if ((retncval = nc_inq_varid(ncid, ws_VarName, &pvarid)))
+		ERR(retncval);
+	// Get the varids of the coordinate variables 	
+	if ((retncval = nc_inq_varid(ncid, yName, &pyid)))
+		ERR(retncval);
+	if ((retncval = nc_inq_varid(ncid, xName, &pxid)))
+		ERR(retncval);
+	//var information, checking the dimension array
+	if (retncval = nc_inq_vardimid(ncid, pvarid, pdimids))
+		ERR(retncval);
+	//check dimension sizes
+	if ((retncval = nc_inq_dim(ncid, pdimids[0], NULL, &Nydim)))
+		ERR(retncval);
+	if ((retncval = nc_inq_dim(ncid, pdimids[1], NULL, &Nxdim)))
+		ERR(retncval);
+
+	//create the output arrays	
+	y_inp = new float[Nydim];
+	x_inp = new float[Nxdim];
+	// Read the coordinate (dimensions) variable data.  
+	if ((retncval = nc_get_var_float(ncid, pyid, &y_inp[0])))
+		ERR(retncval);
+	if ((retncval = nc_get_var_float(ncid, pxid, &x_inp[0])))
+		ERR(retncval);
+
+	//3D outputs nc	
+	int ncid_out = 0, pyid_out = 0, pxid_out = 0, ptid_out = 0, pzid_out=0;
+	int v_varid = 0, t_varid = 0, y_varid = 0, x_varid = 0, gridmap_id = 0;
+	//attributes
+	int natts = 0;
+	size_t att_len;
+	void * attValue;
+	nc_type attType;
+	char attName[256]; // = {}; // "grid_mapping_or_any_other_long_enough_name";
+	char grid_mappingValue[256] = { NULL }; // "grid_mapping_or_any_other_long_enough_name";	
+
+
+	const char* fillValueName = "_FillValue";
+	//float missVal = -9999;
+	const int  NDIMS = 4;
+	int dimids[NDIMS];
+	int oldFill = 0;
+	// The start and count arrays will tell the netCDF library where to write our data.    
+	size_t start[NDIMS], count[NDIMS];
+	// Create netcdf file.  
+	if ((retncval = nc_create(FileName, NC_NETCDF4 | NC_CLOBBER, &ncid_out)))
+		ERR(retncval);
+	//?? set fill on
+	if ((retncval = nc_set_fill(ncid_out, NC_FILL, &oldFill)))
+		ERR(retncval);
+	//copy global attributes from the ws nc
+	if (retncval = nc_inq_natts(ncid, &natts))
+		ERR(retncval);
+	for (int atti = 0; atti < natts; atti++)
+	{
+		if (retncval = nc_inq_attname(ncid, NC_GLOBAL, atti, attName))
+			ERR(retncval);
+		/*if (retncval = nc_inq_atttype(ncid, NC_GLOBAL,(const char*)attName,&attType))
+		ERR(retncval);
+		if (retncval = nc_inq_attlen(ncid, NC_GLOBAL, (const char*)attName, &att_len))
+		ERR(retncval);
+		attValue = ::operator new (att_len*sizeof(attType));
+		if (retncval = nc_get_att(ncid, NC_GLOBAL, (const char*)attName,&attValue))
+		ERR(retncval);*/
+		if (retncval = nc_copy_att(ncid, NC_GLOBAL, (const char*)attName, ncid_out, NC_GLOBAL))
+			ERR(retncval);
+	}
+	/* Define the dimensions. record dim can be unlimited*/
+	if (retncval = nc_def_dim(ncid_out, tName, Nt_dim, &ptid_out))
+		ERR(retncval);
+	if (retncval = nc_def_dim(ncid_out, yName, Nydim, &pyid_out))
+		ERR(retncval);
+	if (retncval = nc_def_dim(ncid_out, xName, Nxdim, &pxid_out))
+		ERR(retncval);
+	if (retncval = nc_def_dim(ncid_out, zName, Nz_dim, &pzid_out))
+		ERR(retncval);
+
+	switch (dimOrd)
+	{
+	case 0:
+		dimids[0] = ptid_out;
+		dimids[1] = pyid_out;
+		dimids[2] = pxid_out;
+		dimids[3] = pzid_out;
+		break;
+	case 1:
+		dimids[0] = pyid_out;
+		dimids[1] = pxid_out;
+		dimids[2] = ptid_out;
+		dimids[3] = pzid_out;
+		break;
+	case 2:
+		dimids[0] = pxid_out;
+		dimids[1] = ptid_out;
+		dimids[2] = pyid_out;
+		dimids[3] = pzid_out;
+		break;
+	default:
+		std::cout << "the dim order has to be between 0 and 2" << std::endl;
+		getchar();
+		break;
+	}
+	// Define the netCDF variables 
+	if (retncval = nc_def_var(ncid_out, VarName, NC_FLOAT, NDIMS, dimids, &v_varid))
+		ERR(retncval);
+	//assign fill value
+	if (retncval = nc_put_att_float(ncid_out, v_varid, fillValueName, NC_FLOAT, 1, fillVal))
+		ERR(retncval);
+	// Assign units attributes to the netCDF variables.  
+	if (retncval = nc_put_att_text(ncid_out, v_varid, "units", strlen(varUnits), varUnits))
+		ERR(retncval);
+	//grid mapping
+	if (retncval = nc_get_att_text(ncid, pvarid, "grid_mapping", grid_mappingValue))
+		ERR(retncval);
+	//std::cout << grid_mappingValue << std::endl;
+	if (retncval = nc_copy_att(ncid, pvarid, "grid_mapping", ncid_out, v_varid))
+		ERR(retncval);
+	/*if (retncval = nc_put_att_text(ncid_out, v_varid, "grid_mapping", , (const char*)grid_mappingValue))
+	ERR(retncval);*/
+	if (retncval = nc_inq_varid(ncid, (const char*)grid_mappingValue, &gridmap_id))
+		ERR(retncval);
+	if (retncval = nc_copy_var(ncid, gridmap_id, ncid_out))
+		ERR(retncval);
+	//time variable
+	if (retncval = nc_def_var(ncid_out, tName, NC_FLOAT, 1, &ptid_out, &t_varid))
+		ERR(retncval);
+	// units attributes  
+	if (retncval = nc_put_att_text(ncid_out, t_varid, "units", strlen(tUnits), tUnits))
+		ERR(retncval);
+	if (retncval = nc_put_att_text(ncid_out, t_varid, "long_name", strlen(tlong_name), tlong_name))
+		ERR(retncval);
+	if (retncval = nc_put_att_text(ncid_out, t_varid, "calendar", strlen(tcalendar), tcalendar))
+		ERR(retncval);
+	// y and x vars
+	if (retncval = nc_def_var(ncid_out, yName, NC_FLOAT, 1, &pyid_out, &y_varid))
+		ERR(retncval);
+	if (retncval = nc_def_var(ncid_out, xName, NC_FLOAT, 1, &pxid_out, &x_varid))
+		ERR(retncval);
+	if (retncval = nc_inq_varnatts(ncid, pyid, &natts))
+		ERR(retncval);
+	for (int atti = 0; atti < natts; atti++)
+	{
+		if (retncval = nc_inq_attname(ncid, pyid, atti, attName))
+			ERR(retncval);
+		if (retncval = nc_copy_att(ncid, pyid, (const char*)attName, ncid_out, y_varid))
+			ERR(retncval);
+	}
+	if (retncval = nc_inq_varnatts(ncid, pxid, &natts))
+		ERR(retncval);
+	for (int atti = 0; atti < natts; atti++)
+	{
+		if (retncval = nc_inq_attname(ncid, pxid, atti, attName))
+			ERR(retncval);
+		if (retncval = nc_copy_att(ncid, pxid, (const char*)attName, ncid_out, x_varid))
+			ERR(retncval);
+	}
+	/* Assign units attributes to the netCDF variables.
+	if ((retncval = nc_put_att_text(ncid, y_varid, vunits, strlen(yUnits), yUnits)))
+	ERR(retncval);
+	if ((retncval = nc_put_att_text(ncid, x_varid, vunits, strlen(xUnits), xUnits)))
+	ERR(retncval);
+	//y and x variables copy
+	if (retncval = nc_copy_var(ncid, pyid, ncid_out))
+	ERR(retncval);
+	if (retncval = nc_copy_var(ncid, pxid, ncid_out))
+	ERR(retncval);	*/
+
+	//put values to dim variables
+	if ((retncval = nc_put_var_float(ncid_out, t_varid, &t_inp[0])))
+		ERR(retncval);
+	if ((retncval = nc_put_var_float(ncid_out, y_varid, &y_inp[0])))
+		ERR(retncval);
+	if ((retncval = nc_put_var_float(ncid_out, x_varid, &x_inp[0])))
+		ERR(retncval);
+	//close files
+	if (retncval = nc_close(ncid))
+		ERR(retncval);
+	if (retncval = nc_close(ncid_out))
+		ERR(retncval);
+
+	std::cout << "Sucess creating and storing dimension vars in: " << FileName << std::endl;
 	//fflush(stdout); 
 	return 0;
 }
@@ -624,7 +1208,7 @@ int Create3DNC(const char* FileName, const char* VarName, const char *varUnits, 
 			 dimids[2] = y_dimid; 			 
 			 break;		
 		default:
-			cout<<"the dim order has to be between 0 and 2"<<endl;
+			std::cout<<"the dim order has to be between 0 and 2"<<std::endl;
 			getchar();
 			break;
 	 }
@@ -672,7 +1256,7 @@ int Create3DNC(const char* FileName, const char* VarName, const char *varUnits, 
 	if ((retncval = nc_close(ncid)))    
 		ERR(retncval);  
 	//delte 3D array	
-	cout<<"Sucess creating and storing dimension vars in: "<<FileName<<endl; 
+	std::cout<<"Sucess creating and storing dimension vars in: "<<FileName<<std::endl; 
 	//fflush(stdout); 
 	return 0;
 }
@@ -721,7 +1305,7 @@ int Write3DNC(const char* FileName, const char* VarName, const char *varUnits,  
 			 dimids[2] = y_dimid; 			 
 			 break;		
 		default:
-			cout<<"the dim order has to be between 0 and 2"<<endl;
+			std::cout<<"the dim order has to be between 0 and 2"<<std::endl;
 			getchar();
 			break;
 	 }
@@ -773,7 +1357,7 @@ int Write3DNC(const char* FileName, const char* VarName, const char *varUnits,  
 	if ((retncval = nc_close(ncid)))    
 		ERR(retncval);  
 	//delte 3D array	
-	cout<<"SUCCESS writing file: "<<FileName<<endl; 
+	std::cout<<"SUCCESS writing file: "<<FileName<<std::endl; 
 	//fflush(stdout); 
 	return 0;
 }
@@ -837,6 +1421,9 @@ int read3DNC_Contiguous(const char* FILE_NAME, const char* VAR_NAME, const char*
 			xcorvar = new float[Nxdim];
 		}
 	}
+	//free existing memory 
+	if (pvar_in != NULL)
+		delete3DArrayblock_Contiguous(pvar_in);
 	//create the output arrays
 	pvar_in = create3DArrayblock_Contiguous(count[0], count[1], count[2]);          // (Ntdim, Nydim, Nxdim);	
 
@@ -853,7 +1440,7 @@ int read3DNC_Contiguous(const char* FILE_NAME, const char* VAR_NAME, const char*
 	//close netcdf file			
 	if ((retncval = nc_close(ncid))) 
 		ERR(retncval); 
-    //cout<<"SUCCESS reading input file: "<< FILE_NAME<<endl;  
+    //std::cout<<"SUCCESS reading input file: "<< FILE_NAME<<std::endl;  
 	return 0;
 }
 
@@ -930,7 +1517,7 @@ int read3DNC(const char* FILE_NAME, const char* VAR_NAME, const char* xcor_NAME,
 		for(size_t i=0; i< Nydim; i++)
 			for(size_t j=0;j<Nxdim;j++)
 				pvar_in[kt][i][j] = pvar_inp[i][j];
-		//cout<<"step no %d\n",k);
+		//std::cout<<"step no %d\n",k);
 	}	/* next record */ 
 	//free temporary matrix pvar_inp
 	for(size_t i=0; i< Nydim; i++)
@@ -939,7 +1526,7 @@ int read3DNC(const char* FILE_NAME, const char* VAR_NAME, const char* xcor_NAME,
 	//close netcdf file			
 	if ((retncval = nc_close(ncid))) 
 		ERR(retncval); 
-	cout<<"SUCCESS reading input file: "<<FILE_NAME<<endl;  
+	std::cout<<"SUCCESS reading input file: "<<FILE_NAME<<std::endl;  
 	return 0;
 }
 //function to read multiple blocks of single column/rod along time dimension from 3D netcdf file, for given y , x coordinate arrays
@@ -959,7 +1546,7 @@ int readNC_TS_Block(const char* FILE_NAME, const char* VAR_NAME, const char* tco
 	char pdim_Names[80];
 	size_t start[3], count[3];
 	//Open the netcdf file.  
-	if ((retncval = nc_open_par(FILE_NAME, NC_NOWRITE, &ncid)))         // NC_MPIIO, inpComm, inpInfo,
+	if ((retncval = nc_open(FILE_NAME, NC_NOWRITE, &ncid)))         // NC_MPIIO, inpComm, inpInfo,
 		ERR(retncval);
 	// get variable id
 	if ((retncval = nc_inq_varid(ncid, VAR_NAME, &pvarid)))
@@ -1001,8 +1588,8 @@ int readNC_TS_Block(const char* FILE_NAME, const char* VAR_NAME, const char* tco
 		//read var data
 		if (retncval = nc_get_vara_float(ncid, pvarid, start, count, &pvar_in[j][0]))
 			ERR(retncval);
-		/* Read the coordinate (dimensions) variable data. */
 	}
+	/* Read the coordinate (dimensions) variable data. */
 	/*if (retncval = nc_get_var_float(ncid, ptid, &tcorvar[0]))
 		ERR(retncval);*/
 	//close netcdf file			
@@ -1029,6 +1616,7 @@ int readNC_TS(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME
 	//dimension names 
 	char pdim_Names[80];
 	size_t start[3], count[3];
+	size_t startT, countT;
 	//Open the netcdf file.  
 	if ((retncval = nc_open(FILE_NAME, NC_NOWRITE, &ncid)))		
 		ERR(retncval); 
@@ -1048,9 +1636,11 @@ int readNC_TS(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME
 			ERR(retncval); 
 	    if (strcmp(pdim_Names, tcor_NAME) == 0 )
 		{
-			start[i] = 0;		    
+			start[i] = 0;	
+			startT = 0;
 			nrecords = pdim_sizes;
 			count[i] = nrecords;
+			countT = nrecords;
 			//allocate memory block for the 'data' varialbe 
 			pvar_in = new float[nrecords];                    //6.23.14
 			pvarin_temp = new float[nrecords];
@@ -1072,11 +1662,12 @@ int readNC_TS(const char* FILE_NAME, const char* VAR_NAME, const char* tcor_NAME
 	if (retncval = nc_get_vara_float(ncid, pvarid, start, count, &pvar_in[0]))
 		ERR(retncval);	
 		/* Read the coordinate (dimensions) variable data. */ 
-	if (retncval = nc_get_var_float(ncid, ptid, &tcorvar[0]))
-		ERR(retncval);
+		
+	/*if (retncval = nc_get_vara_float(ncid, ptid, &startT, &countT, &tcorvar[0]))
+		ERR(retncval);*/
 	//close netcdf file			
 	if (retncval = nc_close(ncid))
-		ERR(retncval); 
+		ERR(retncval);
 
 	return 0;
 }
@@ -1128,7 +1719,7 @@ int read2DNC(const char* FILE_NAME, const char* VAR_NAME, float** &pvar_in, MPI:
 			ERR(retncval); 
 		for(int ix=0; ix< Nxdim; ix++)			
 				pvar_in[nj][ix] = ta_inp[ix];
-		//cout<<"step no %d\n",nj);
+		//std::cout<<"step no %d\n",nj);
 	}	/* next record */ 
 	/*ycorvar = new float[Nydim];
 	xcorvar = new float[Nxdim];
@@ -1178,12 +1769,12 @@ int readwsncFile(const char* FILE_NAME, const char* VAR_NAME, const char* ycor_N
 	//CF Convension use _FillValue
 	if ((retncval = nc_get_att(ncid,pvarid,"_FillValue",&fillVal)))    
 		ERR(retncval); 		
-	//cout<<"_FillValue: "<<fillVal<<endl;
+	//std::cout<<"_FillValue: "<<fillVal<<std::endl;
 	/*int iMiss;
 	 if ((retncval = nc_inq_var_fill(ncid,pvarid, &fillSet,&iMiss)))     
 		 	ERR(retncval); 		
-	cout<<" Fill value: "<<iMiss<<endl;
-	cout<<" Fill set? "<<fillSet<<endl;*/
+	std::cout<<" Fill value: "<<iMiss<<std::endl;
+	std::cout<<" Fill set? "<<fillSet<<std::endl;*/
 	
 	//check dimension sizes
 	if ((retncval = nc_inq_dim(ncid,pdimids[0],NULL,&Nydim))) 
@@ -1221,9 +1812,9 @@ int readwsncFile(const char* FILE_NAME, const char* VAR_NAME, const char* ycor_N
 			ERR(retncval); 
 		for(int ix=0; ix< Nxdim; ix++)			
 				pvar_in[nj][ix] = ta_inp[ix];
-		//cout<<"step no %d\n",nj);
+		//std::cout<<"step no %d\n",nj);
 	}	/* next record */ 	
-    //cout<<endl;
+    //std::cout<<std::endl;
 	/*if ((retncval = nc_get_vara_int(ncid, pvarid,start,count, &pvar_in[0][0])))      
 			ERR(retncval); 	*/
 	//close netcdf file	
@@ -1319,7 +1910,7 @@ int Write3DNC(const char* FILE_NAME, const char* VAR_NAME, const char* xcor_NAME
 		start[0] = kt;
 		if ((retncval = nc_put_vara_float(ncid, pvarid,start,count, &pvar_outp[0][0])))      
 			ERR(retncval); 		
-		//cout<<"step no %d\n",k);
+		//std::cout<<"step no %d\n",k);
 	}	/* next record */ 
 	//free temporary matrix pvar_outp
 	for(size_t i=0; i< Nydim; i++)
@@ -1328,6 +1919,6 @@ int Write3DNC(const char* FILE_NAME, const char* VAR_NAME, const char* xcor_NAME
 	//close netcdf file			
 	if ((retncval = nc_close(ncid))) 
 		ERR(retncval); 
-	cout<<"SUCCESS writing output file: "<<FILE_NAME<<endl;  
+	std::cout<<"SUCCESS writing output file: "<<FILE_NAME<<std::endl;  
 	return 0;	
 }
